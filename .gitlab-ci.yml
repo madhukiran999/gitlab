@@ -1,0 +1,143 @@
+
+##################
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+####################
+image: node
+# setup Global image
+stages:
+ - build
+ - test
+ - review-stage
+ - stageenv
+ - productionenv
+ - deployment test
+# completed stages defined
+
+#########################
+variables:
+  stage_var: "http://taboo-cows.surge.sh"
+  production_var: "http://madhukiran.surge.sh"
+##########--- Variable declaration ---###
+build website:
+  stage: build
+  only:
+    - master
+    - merge_requests
+  image: node:lts
+  script:
+    - echo $CI_COMMIT_SHORT_SHA
+    - npm install
+    - npm install -g gatsby-cli
+    - gatsby build
+    # - sed -i "s/%%VERSION%%/$CI_COMMIT_SHORT_SHA/d" .public/index.html
+# Completed Build stage and saving artifact in public folder
+  artifacts:
+    paths:
+      - ./public
+#############################
+
+test artifact:
+  image: alpine
+  stage: test
+  only:
+    - master
+    - merge_requests
+  script:
+      - grep -q "Gatsby" ./public/index.html
+#tested artifact
+############################
+
+test website:
+  stage: test
+  # image: node
+  only:
+    - master
+    - merge_requests
+  script:
+    - npm install
+    - npm install -g gatsby-cli
+    - gatsby serve & # start the server and make it background process also sleep for some time to allow start the website and curl to get the data
+    - sleep 3
+    - curl "http://localhost:9000" | tac | tac | grep -q "Gatsby"
+
+#tested website
+#############################
+deploy review:
+  stage: review-stage #### Adding Dynamic Review environment stage
+  only:
+    - merge_requests ## code accept from only  merge request  and Dynamic environment created to have look on new features
+  environment:
+      name: review/$CI_COMMIT_REF_NAME   ### reference from docs
+      url: https://madhukiran-$CI_ENVIRONMENT_SLUG.surge.sh ### adding url for review env - with env variable from docs
+      on_stop: stop review
+ 
+  script:
+    - npm install --global surge # adding surge installation step
+    - npx surge --project ./public --domain madhukiran-$CI_ENVIRONMENT_SLUG.surge.sh # adding domain and path for review environment
+###########################
+stop review:  ## Stopping Review environment
+  stage: review-stage
+  only:
+    - merge_requests
+  variables:
+    GIT_STRATEGY: none ## git does not clone this repository
+  script:
+    - npm install --global surge
+    - surge teardown madhukiran-$CI_ENVIRONMENT_SLUG.surge.sh  ## Tear down the deployed review environment stage
+  when: manual
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    action: stop
+######################################
+staging deployment:
+  stage: stageenv
+  only:
+    - master 
+  environment:
+    name: staging
+    url: $stage_var
+  before_script:
+    - echo "Deploying to Staging Environment"
+  script:
+    - npm install --global surge # adding surge installation step
+    - npx surge --project ./public --domain $stage_var # adding domain and path
+###########################
+production deployment:
+  stage: productionenv
+  only: 
+    - master
+ 
+  environment:
+    name: production
+    url: $production_var
+  when: manual
+  allow_failure: false
+  before_script:
+    - echo "Deploying to Production Environment"
+
+  script:
+    - npm install --global surge # adding surge installation step
+    - npx surge --project ./public --domain $production_var # adding domain and path
+###########################
+#completed deployment
+Test Deployment:
+  stage: deployment test
+  only:
+    - master
+  image: alpine
+  script: 
+    - apk update
+    - apk add --no-cache curl
+    # - curl "http://madhukiran.surge.sh" | grep -i "$CI_COMMIT_SHORT_SHA"
+    # - curl  "http://madhukiran.surge.sh" | grep -i "Welcome" # test web site
+
+#Completes depolyment stage
+
+  
+
+    
+  
+
